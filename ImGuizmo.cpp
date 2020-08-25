@@ -287,7 +287,6 @@ namespace ImGuizmo
          vec_t component[4];
       };
 
-      matrix_t(const matrix_t& other) { memcpy(&m16[0], &other.m16[0], sizeof(float) * 16); }
       matrix_t() {}
 
       operator float* () { return m16; }
@@ -886,6 +885,7 @@ namespace ImGuizmo
       case SCALE:       return GetScaleType()      != NONE || IsUsing();
       case ROTATE:      return GetRotateType()     != NONE || IsUsing();
       case TRANSLATE:   return GetMoveType(NULL)   != NONE || IsUsing();
+      case BOUNDS:      break;
       }
       return false;
    }
@@ -2191,7 +2191,6 @@ namespace ImGuizmo
 
          const matrix_t& model = *(matrix_t*)matrix;
          matrix_t res = *(matrix_t*)matrix * *(matrix_t*)view * *(matrix_t*)projection;
-         matrix_t modelView = *(matrix_t*)matrix * *(matrix_t*)view;
 
          for (int iFace = 0; iFace < 6; iFace++)
          {
