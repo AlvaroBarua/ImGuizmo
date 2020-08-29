@@ -847,14 +847,13 @@ namespace ImGuizmo
 
    void BeginFrame()
    {
-      ImGuiIO& io = ImGui::GetIO();
-
       const ImU32 flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus;
 
 #ifdef IMGUI_HAS_VIEWPORT
       ImGui::SetNextWindowSize(ImGui::GetMainViewport()->Size);
       ImGui::SetNextWindowPos(ImGui::GetMainViewport()->Pos);
 #else
+      ImGuiIO& io = ImGui::GetIO();
       ImGui::SetNextWindowSize(io.DisplaySize);
       ImGui::SetNextWindowPos(ImVec2(0, 0));
 #endif
@@ -2188,8 +2187,6 @@ namespace ImGuizmo
       for (int cube = 0; cube < matrixCount; cube++)
       {
          const float* matrix = &matrices[cube * 16];
-
-         const matrix_t& model = *(matrix_t*)matrix;
          matrix_t res = *(matrix_t*)matrix * *(matrix_t*)view * *(matrix_t*)projection;
 
          for (int iFace = 0; iFace < 6; iFace++)
@@ -2387,10 +2384,6 @@ namespace ImGuizmo
             const vec_t indexVectorX = directionUnary[perpXIndex] * invert;
             const vec_t indexVectorY = directionUnary[perpYIndex] * invert;
             const vec_t boxOrigin = directionUnary[normalIndex] * -invert - indexVectorX - indexVectorY;
-            const vec_t faceCoords[4] = { directionUnary[normalIndex] + directionUnary[perpXIndex] + directionUnary[perpYIndex],
-                                          directionUnary[normalIndex] + directionUnary[perpXIndex] - directionUnary[perpYIndex],
-                                          directionUnary[normalIndex] - directionUnary[perpXIndex] - directionUnary[perpYIndex],
-                                          directionUnary[normalIndex] - directionUnary[perpXIndex] + directionUnary[perpYIndex] };
 
             // plan local space
             const vec_t n = directionUnary[normalIndex] * invert;
