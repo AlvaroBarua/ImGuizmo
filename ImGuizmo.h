@@ -120,9 +120,15 @@ namespace ImGuizmo
    // call BeginFrame right after ImGui_XXXX_NewFrame();
    IMGUI_API void BeginFrame();
 
+   // return true if mouse cursor is over manipulate gizmo
+   IMGUI_API bool IsOverManipulate();
+
    // return true if mouse cursor is over any gizmo control (axis, plan or screen component)
    IMGUI_API bool IsOver();
 
+   // return true if mouse cursor is over view manipulate gizmo
+   IMGUI_API bool IsOverViewManipulate();
+   
    // return true if mouse IsOver or if the gizmo is in moving state
    IMGUI_API bool IsUsing();
 

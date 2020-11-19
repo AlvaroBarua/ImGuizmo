@@ -592,7 +592,7 @@ namespace ImGuizmo
 
    struct Context
    {
-      Context() : mbUsing(false), mbEnable(true), mbUsingBounds(false)
+      Context() : mbUsing(false), mbEnable(true), mbUsingBounds(false), mbOverViewManipulate(false)
       {
       }
 
@@ -626,6 +626,7 @@ namespace ImGuizmo
 
       bool mbUsing;
       bool mbEnable;
+      bool mbOverViewManipulate;
 
       // translation
       vec_t mTranslationPlan;
@@ -881,18 +882,30 @@ namespace ImGuizmo
       return gContext.mbUsing || gContext.mbUsingBounds;
    }
 
+   bool IsOverManipulate()
+   {
+      return   (gContext.mOperation == TRANSLATE && GetMoveType(NULL) != NONE)   ||
+               (gContext.mOperation == ROTATE && GetRotateType() != NONE)        ||
+               (gContext.mOperation == SCALE && GetScaleType() != NONE)          ||
+               IsUsing();
+   }
+
    bool IsOver()
    {
-      return (gContext.mOperation == TRANSLATE && GetMoveType(NULL) != NONE) ||
-         (gContext.mOperation == ROTATE && GetRotateType() != NONE) ||
-         (gContext.mOperation == SCALE && GetScaleType() != NONE) || IsUsing();
+      return IsOverManipulate() || gContext.mbOverViewManipulate;
+   }
+
+   bool IsOverViewManipulate()
+   {
+      return gContext.mbOverViewManipulate;
    }
 
    bool IsOver(OPERATION op) {
       switch (op) {
-      case SCALE:       return GetScaleType() != NONE || IsUsing();
-      case ROTATE:      return GetRotateType() != NONE || IsUsing();
-      case TRANSLATE:   return GetMoveType(NULL) != NONE || IsUsing();
+         case SCALE:       return GetScaleType() != NONE || IsUsing();
+         case ROTATE:      return GetRotateType() != NONE || IsUsing();
+         case TRANSLATE:   return GetMoveType(NULL) != NONE || IsUsing();
+         case BOUNDS:      return false;
       }
       return false;
    }
@@ -968,31 +981,31 @@ namespace ImGuizmo
       {
          switch (operation)
          {
-         case TRANSLATE:
-            colors[0] = (type == MOVE_SCREEN) ? selectionColor : 0xFFFFFFFF;
-            for (int i = 0; i < 3; i++)
-            {
-               colors[i + 1] = (type == (int)(MOVE_X + i)) ? selectionColor : directionColor[i];
-               colors[i + 4] = (type == (int)(MOVE_YZ + i)) ? selectionColor : planeColor[i];
-               colors[i + 4] = (type == MOVE_SCREEN) ? selectionColor : colors[i + 4];
-            }
-            break;
-         case ROTATE:
-            colors[0] = (type == ROTATE_SCREEN) ? selectionColor : 0xFFFFFFFF;
-            for (int i = 0; i < 3; i++)
-            {
-               colors[i + 1] = (type == (int)(ROTATE_X + i)) ? selectionColor : directionColor[i];
-            }
-            break;
-         case SCALE:
-            colors[0] = (type == SCALE_XYZ) ? selectionColor : 0xFFFFFFFF;
-            for (int i = 0; i < 3; i++)
-            {
-               colors[i + 1] = (type == (int)(SCALE_X + i)) ? selectionColor : directionColor[i];
-            }
-            break;
-         case BOUNDS:
-            break;
+            case TRANSLATE:
+               colors[0] = (type == MOVE_SCREEN) ? selectionColor : 0xFFFFFFFF;
+               for (int i = 0; i < 3; i++)
+               {
+                  colors[i + 1] = (type == (int)(MOVE_X + i)) ? selectionColor : directionColor[i];
+                  colors[i + 4] = (type == (int)(MOVE_YZ + i)) ? selectionColor : planeColor[i];
+                  colors[i + 4] = (type == MOVE_SCREEN) ? selectionColor : colors[i + 4];
+               }
+               break;
+            case ROTATE:
+               colors[0] = (type == ROTATE_SCREEN) ? selectionColor : 0xFFFFFFFF;
+               for (int i = 0; i < 3; i++)
+               {
+                  colors[i + 1] = (type == (int)(ROTATE_X + i)) ? selectionColor : directionColor[i];
+               }
+               break;
+            case SCALE:
+               colors[0] = (type == SCALE_XYZ) ? selectionColor : 0xFFFFFFFF;
+               for (int i = 0; i < 3; i++)
+               {
+                  colors[i + 1] = (type == (int)(SCALE_X + i)) ? selectionColor : directionColor[i];
+               }
+               break;
+            case BOUNDS:
+               break;
          }
       }
       else
@@ -1461,10 +1474,10 @@ namespace ImGuizmo
 
             switch (operation)
             {
-            case TRANSLATE: type = GetMoveType(&gizmoHitProportion); break;
-            case ROTATE: type = GetRotateType(); break;
-            case SCALE: type = GetScaleType(); break;
-            case BOUNDS: break;
+               case TRANSLATE: type = GetMoveType(&gizmoHitProportion); break;
+               case ROTATE: type = GetRotateType(); break;
+               case SCALE: type = GetScaleType(); break;
+               case BOUNDS: break;
             }
             if (type != NONE)
             {
@@ -2114,17 +2127,17 @@ namespace ImGuizmo
          {
             switch (operation)
             {
-            case ROTATE:
-               manipulated = HandleRotation(matrix, deltaMatrix, type, snap);
-               break;
-            case TRANSLATE:
-               manipulated = HandleTranslation(matrix, deltaMatrix, type, snap);
-               break;
-            case SCALE:
-               manipulated = HandleScale(matrix, deltaMatrix, type, snap);
-               break;
-            case BOUNDS:
-               break;
+               case ROTATE:
+                  manipulated = HandleRotation(matrix, deltaMatrix, type, snap);
+                  break;
+               case TRANSLATE:
+                  manipulated = HandleTranslation(matrix, deltaMatrix, type, snap);
+                  break;
+               case SCALE:
+                  manipulated = HandleScale(matrix, deltaMatrix, type, snap);
+                  break;
+               case BOUNDS:
+                  break;
             }
          }
       }
@@ -2139,17 +2152,17 @@ namespace ImGuizmo
       {
          switch (operation)
          {
-         case ROTATE:
-            DrawRotationGizmo(type);
-            break;
-         case TRANSLATE:
-            DrawTranslationGizmo(type);
-            break;
-         case SCALE:
-            DrawScaleGizmo(type);
-            break;
-         case BOUNDS:
-            break;
+            case ROTATE:
+               DrawRotationGizmo(type);
+               break;
+            case TRANSLATE:
+               DrawTranslationGizmo(type);
+               break;
+            case SCALE:
+               DrawScaleGizmo(type);
+               break;
+            case BOUNDS:
+               break;
          }
       }
       return manipulated;
@@ -2302,7 +2315,7 @@ namespace ImGuizmo
             return 1;
          }
          return -1;
-         });
+      });
       // draw face with lighter color
       for (int iFace = 0; iFace < cubeFaceCount; iFace++)
       {
@@ -2371,11 +2384,12 @@ namespace ImGuizmo
    {
       static bool isDraging = false;
       static bool isClicking = false;
-      static bool isInside = false;
       static vec_t interpolationUp;
       static vec_t interpolationDir;
       static int interpolationFrames = 0;
       const vec_t referenceUp = makeVect(0.f, 1.f, 0.f);
+
+      gContext.mbOverViewManipulate = false;
 
       matrix_t svgView, svgProjection;
       svgView = gContext.mViewMat;
@@ -2482,12 +2496,13 @@ namespace ImGuizmo
                int boxCoordInt = int(boxCoord.x * 9.f + boxCoord.y * 3.f + boxCoord.z);
                assert(boxCoordInt < 27);
                boxes[boxCoordInt] |= insidePanel && (!isDraging);
+               gContext.mbOverViewManipulate |= boxes[boxCoordInt];
 
                // draw face with lighter color
                if (iPass)
                {
-                  gContext.mDrawList->AddConvexPolyFilled(faceCoordsScreen, 4, (directionColor[normalIndex] | 0x80808080) | (isInside ? 0x080808 : 0));
-                  if (boxes[boxCoordInt])
+                  gContext.mDrawList->AddConvexPolyFilled(faceCoordsScreen, 4, (directionColor[normalIndex] | 0x80808080) | ((gContext.mbOverViewManipulate && !IsUsing()) ? 0x080808 : 0));
+                  if (boxes[boxCoordInt] && !IsUsing())
                   {
                      gContext.mDrawList->AddConvexPolyFilled(faceCoordsScreen, 4, 0x8060A0F0);
 
@@ -2545,10 +2560,12 @@ namespace ImGuizmo
          vec_t newEye = camTarget + newDir * length;
          LookAt(&newEye.x, &camTarget.x, &newUp.x, view);
       }
-      isInside = ImRect(position, position + size).Contains(io.MousePos);
+
+      if ((backgroundColor & IM_COL32_A_MASK) != 0)
+         gContext.mbOverViewManipulate = ImRect(position, position + size).Contains(io.MousePos);
 
       // drag view
-      if (!isDraging && io.MouseDown[0] && isInside && (fabsf(io.MouseDelta.x) > 0.f || fabsf(io.MouseDelta.y) > 0.f))
+      if (!IsUsing() && !isDraging && io.MouseDown[0] && gContext.mbOverViewManipulate && (fabsf(io.MouseDelta.x) > 0.f || fabsf(io.MouseDelta.y) > 0.f))
       {
          isDraging = true;
          isClicking = false;
