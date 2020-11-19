@@ -26,10 +26,11 @@
 #endif
 #include "imgui_internal.h"
 #include "ImGuizmo.h"
-#if !defined(_MSC_VER)
+#if !defined(_WIN32) 
 #define _malloca(x) alloca(x)
-#endif
+#else
 #include <malloc.h>
+#endif
 
 // includes patches for multiview from
 // https://github.com/CedricGuillemet/ImGuizmo/issues/15
@@ -39,7 +40,7 @@ namespace ImGuizmo
    static const float ZPI = 3.14159265358979323846f;
    static const float RAD2DEG = (180.f / ZPI);
    static const float DEG2RAD = (ZPI / 180.f);
-   static const float gGizmoSizeClipSpace = 0.1f;
+   static float gGizmoSizeClipSpace = 0.1f;
    const float screenRotateSize = 0.06f;
 
    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -234,6 +235,7 @@ namespace ImGuizmo
 
       float& operator [] (size_t index) { return ((float*)&x)[index]; }
       const float& operator [] (size_t index) const { return ((float*)&x)[index]; }
+      bool operator!=(const vec_t& other) const { return memcmp(this, &other, sizeof(vec_t)); }
    };
 
    vec_t makeVect(float _x, float _y, float _z = 0.f, float _w = 0.f) { vec_t res; res.x = _x; res.y = _y; res.z = _z; res.w = _w; return res; }
@@ -287,6 +289,7 @@ namespace ImGuizmo
          vec_t component[4];
       };
 
+      matrix_t(const matrix_t& other) { memcpy(&m16[0], &other.m16[0], sizeof(float) * 16); }
       matrix_t() {}
 
       operator float* () { return m16; }
@@ -628,6 +631,7 @@ namespace ImGuizmo
       vec_t mTranslationPlan;
       vec_t mTranslationPlanOrigin;
       vec_t mMatrixOrigin;
+      vec_t mTranslationLastDelta;
 
       // rotation
       vec_t mRotationVectorSource;
@@ -638,6 +642,7 @@ namespace ImGuizmo
       // scale
       vec_t mScale;
       vec_t mScaleValueOrigin;
+      vec_t mScaleLast;
       float mSaveMousePosx;
 
       // save axis factor when using gizmo
@@ -670,6 +675,7 @@ namespace ImGuizmo
 
       int mActualID = -1;
       int mEditingID = -1;
+      OPERATION mOperation = OPERATION(-1);
    };
 
    static Context gContext;
@@ -835,25 +841,26 @@ namespace ImGuizmo
       gContext.mDisplayRatio = width / height;
    }
 
-   IMGUI_API void SetOrthographic(bool isOrthographic)
+   void SetOrthographic(bool isOrthographic)
    {
       gContext.mIsOrthographic = isOrthographic;
    }
 
-   void SetDrawlist()
+   void SetDrawlist(ImDrawList* drawlist)
    {
-      gContext.mDrawList = ImGui::GetWindowDrawList();
-}
+      gContext.mDrawList = drawlist ? drawlist : ImGui::GetWindowDrawList();
+   }
 
    void BeginFrame()
    {
+      ImGuiIO& io = ImGui::GetIO();
+
       const ImU32 flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus;
 
 #ifdef IMGUI_HAS_VIEWPORT
       ImGui::SetNextWindowSize(ImGui::GetMainViewport()->Size);
       ImGui::SetNextWindowPos(ImGui::GetMainViewport()->Pos);
 #else
-      ImGuiIO& io = ImGui::GetIO();
       ImGui::SetNextWindowSize(io.DisplaySize);
       ImGui::SetNextWindowPos(ImVec2(0, 0));
 #endif
@@ -876,15 +883,16 @@ namespace ImGuizmo
 
    bool IsOver()
    {
-      return (GetMoveType(NULL) != NONE) || GetRotateType() != NONE || GetScaleType() != NONE || IsUsing();
+      return (gContext.mOperation == TRANSLATE && GetMoveType(NULL) != NONE) ||
+         (gContext.mOperation == ROTATE && GetRotateType() != NONE) ||
+         (gContext.mOperation == SCALE && GetScaleType() != NONE) || IsUsing();
    }
 
    bool IsOver(OPERATION op) {
       switch (op) {
-      case SCALE:       return GetScaleType()      != NONE || IsUsing();
-      case ROTATE:      return GetRotateType()     != NONE || IsUsing();
-      case TRANSLATE:   return GetMoveType(NULL)   != NONE || IsUsing();
-      case BOUNDS:      break;
+      case SCALE:       return GetScaleType() != NONE || IsUsing();
+      case ROTATE:      return GetRotateType() != NONE || IsUsing();
+      case TRANSLATE:   return GetMoveType(NULL) != NONE || IsUsing();
       }
       return false;
    }
@@ -1024,9 +1032,9 @@ namespace ImGuizmo
          float lenDirPlaneY = GetSegmentLengthClipSpace(makeVect(0.f, 0.f, 0.f), dirPlaneY);
          float lenDirMinusPlaneY = GetSegmentLengthClipSpace(makeVect(0.f, 0.f, 0.f), -dirPlaneY);
 
-         float mulAxis = (lenDir < lenDirMinus && fabsf(lenDir - lenDirMinus) > FLT_EPSILON) ? -1.f : 1.f;
-         float mulAxisX = (lenDirPlaneX < lenDirMinusPlaneX && fabsf(lenDirPlaneX - lenDirMinusPlaneX) > FLT_EPSILON) ? -1.f : 1.f;
-         float mulAxisY = (lenDirPlaneY < lenDirMinusPlaneY && fabsf(lenDirPlaneY - lenDirMinusPlaneY) > FLT_EPSILON) ? -1.f : 1.f;
+         float mulAxis = (lenDir < lenDirMinus&& fabsf(lenDir - lenDirMinus) > FLT_EPSILON) ? -1.f : 1.f;
+         float mulAxisX = (lenDirPlaneX < lenDirMinusPlaneX&& fabsf(lenDirPlaneX - lenDirMinusPlaneX) > FLT_EPSILON) ? -1.f : 1.f;
+         float mulAxisY = (lenDirPlaneY < lenDirMinusPlaneY&& fabsf(lenDirPlaneY - lenDirMinusPlaneY) > FLT_EPSILON) ? -1.f : 1.f;
          dirAxis *= mulAxis;
          dirPlaneX *= mulAxisX;
          dirPlaneY *= mulAxisY;
@@ -1065,7 +1073,7 @@ namespace ImGuizmo
          *value = *value - modulo + snap * ((*value < 0.f) ? -1.f : 1.f);
       }
    }
-   static void ComputeSnap(vec_t& value, float* snap)
+   static void ComputeSnap(vec_t& value, const float* snap)
    {
       for (int i = 0; i < 3; i++)
       {
@@ -1333,7 +1341,7 @@ namespace ImGuizmo
       return false;
    }
 
-   static void HandleAndDrawLocalBounds(float* bounds, matrix_t* matrix, float* snapValues, OPERATION operation)
+   static void HandleAndDrawLocalBounds(const float* bounds, matrix_t* matrix, const float* snapValues, OPERATION operation)
    {
       ImGuiIO& io = ImGui::GetIO();
       ImDrawList* drawList = gContext.mDrawList;
@@ -1453,10 +1461,10 @@ namespace ImGuizmo
 
             switch (operation)
             {
-               case TRANSLATE: type = GetMoveType(&gizmoHitProportion); break;
-               case ROTATE: type = GetRotateType(); break;
-               case SCALE: type = GetScaleType(); break;
-               case BOUNDS: break;
+            case TRANSLATE: type = GetMoveType(&gizmoHitProportion); break;
+            case ROTATE: type = GetRotateType(); break;
+            case SCALE: type = GetScaleType(); break;
+            case BOUNDS: break;
             }
             if (type != NONE)
             {
@@ -1722,10 +1730,11 @@ namespace ImGuizmo
       return type;
    }
 
-   static void HandleTranslation(float* matrix, float* deltaMatrix, int& type, float* snap)
+   static bool HandleTranslation(float* matrix, float* deltaMatrix, int& type, const float* snap)
    {
       ImGuiIO& io = ImGui::GetIO();
       bool applyRotationLocaly = gContext.mMode == LOCAL || type == MOVE_SCREEN;
+      bool modified = false;
 
       // move
       if (gContext.mbUsing && (gContext.mActualID == -1 || gContext.mActualID == gContext.mEditingID))
@@ -1768,6 +1777,12 @@ namespace ImGuizmo
             delta = gContext.mMatrixOrigin + cumulativeDelta - gContext.mModel.v.position;
 
          }
+
+         if (delta != gContext.mTranslationLastDelta)
+         {
+            modified = true;
+         }
+         gContext.mTranslationLastDelta = delta;
 
          // compute matrix & delta
          matrix_t deltaMatrixTranslation;
@@ -1821,11 +1836,13 @@ namespace ImGuizmo
             gContext.mRelativeOrigin = (gContext.mTranslationPlanOrigin - gContext.mModel.v.position) * (1.f / gContext.mScreenFactor);
          }
       }
+      return modified;
    }
 
-   static void HandleScale(float* matrix, float* deltaMatrix, int& type, float* snap)
+   static bool HandleScale(float* matrix, float* deltaMatrix, int& type, const float* snap)
    {
       ImGuiIO& io = ImGui::GetIO();
+      bool modified = false;
 
       if (!gContext.mbUsing)
       {
@@ -1892,6 +1909,12 @@ namespace ImGuizmo
          for (int i = 0; i < 3; i++)
             gContext.mScale[i] = max(gContext.mScale[i], 0.001f);
 
+         if (gContext.mScaleLast != gContext.mScale)
+         {
+            modified = true;
+         }
+         gContext.mScaleLast = gContext.mScale;
+
          // compute matrix & delta
          matrix_t deltaMatrixScale;
          deltaMatrixScale.Scale(gContext.mScale * gContext.mScaleValueOrigin);
@@ -1910,12 +1933,14 @@ namespace ImGuizmo
 
          type = gContext.mCurrentOperation;
       }
+      return modified;
    }
 
-   static void HandleRotation(float* matrix, float* deltaMatrix, int& type, float* snap)
+   static bool HandleRotation(float* matrix, float* deltaMatrix, int& type, const float* snap)
    {
       ImGuiIO& io = ImGui::GetIO();
       bool applyRotationLocaly = gContext.mMode == LOCAL;
+      bool modified = false;
 
       if (!gContext.mbUsing)
       {
@@ -1971,6 +1996,10 @@ namespace ImGuizmo
 
          matrix_t deltaRotation;
          deltaRotation.RotationAxis(rotationAxisLocalSpace, gContext.mRotationAngle - gContext.mRotationAngleOrigin);
+         if (gContext.mRotationAngle != gContext.mRotationAngleOrigin)
+         {
+            modified = true;
+         }
          gContext.mRotationAngleOrigin = gContext.mRotationAngle;
 
          matrix_t scaleOrigin;
@@ -2001,6 +2030,7 @@ namespace ImGuizmo
          }
          type = gContext.mCurrentOperation;
       }
+      return modified;
    }
 
    void DecomposeMatrixToComponents(const float* matrix, float* translation, float* rotation, float* scale)
@@ -2057,7 +2087,7 @@ namespace ImGuizmo
       gContext.mActualID = id;
    }
 
-   void Manipulate(const float* view, const float* projection, OPERATION operation, MODE mode, float* matrix, float* deltaMatrix, float* snap, float* localBounds, float* boundsSnap)
+   bool Manipulate(const float* view, const float* projection, OPERATION operation, MODE mode, float* matrix, float* deltaMatrix, const float* snap, const float* localBounds, const float* boundsSnap)
    {
       ComputeContext(view, projection, matrix, mode);
 
@@ -2072,11 +2102,12 @@ namespace ImGuizmo
       camSpacePosition.TransformPoint(makeVect(0.f, 0.f, 0.f), gContext.mMVP);
       if (!gContext.mIsOrthographic && camSpacePosition.z < 0.001f)
       {
-         return;
+         return false;
       }
 
       // --
       int type = NONE;
+      bool manipulated = false;
       if (gContext.mbEnable)
       {
          if (!gContext.mbUsingBounds)
@@ -2084,13 +2115,13 @@ namespace ImGuizmo
             switch (operation)
             {
             case ROTATE:
-               HandleRotation(matrix, deltaMatrix, type, snap);
+               manipulated = HandleRotation(matrix, deltaMatrix, type, snap);
                break;
             case TRANSLATE:
-               HandleTranslation(matrix, deltaMatrix, type, snap);
+               manipulated = HandleTranslation(matrix, deltaMatrix, type, snap);
                break;
             case SCALE:
-               HandleScale(matrix, deltaMatrix, type, snap);
+               manipulated = HandleScale(matrix, deltaMatrix, type, snap);
                break;
             case BOUNDS:
                break;
@@ -2103,6 +2134,7 @@ namespace ImGuizmo
          HandleAndDrawLocalBounds(localBounds, (matrix_t*)matrix, boundsSnap, operation);
       }
 
+      gContext.mOperation = operation;
       if (!gContext.mbUsingBounds)
       {
          switch (operation)
@@ -2120,6 +2152,12 @@ namespace ImGuizmo
             break;
          }
       }
+      return manipulated;
+   }
+
+   void SetGizmoSizeClipSpace(float value)
+   {
+      gGizmoSizeClipSpace = value;
    }
 
    ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2165,7 +2203,7 @@ namespace ImGuizmo
    {
       matrix_t viewInverse;
       viewInverse.Inverse(*(matrix_t*)view);
-      
+
       struct CubeFace
       {
          float z;
@@ -2187,7 +2225,10 @@ namespace ImGuizmo
       for (int cube = 0; cube < matrixCount; cube++)
       {
          const float* matrix = &matrices[cube * 16];
+
+         const matrix_t& model = *(matrix_t*)matrix;
          matrix_t res = *(matrix_t*)matrix * *(matrix_t*)view * *(matrix_t*)projection;
+         matrix_t modelView = *(matrix_t*)matrix * *(matrix_t*)view;
 
          for (int iFace = 0; iFace < 6; iFace++)
          {
@@ -2248,19 +2289,19 @@ namespace ImGuizmo
                cubeFace.faceCoordsScreen[iCoord] = worldToPos(faceCoords[iCoord] * 0.5f * invert, res);
             }
             cubeFace.color = directionColor[normalIndex] | 0x808080;
-            
+
             cubeFace.z = centerPositionVP.z / centerPositionVP.w;
             cubeFaceCount++;
          }
       }
-      qsort(faces, cubeFaceCount, sizeof(CubeFace), [](void const* _a, void const* _b){
-            CubeFace* a = (CubeFace*)_a;
-            CubeFace* b = (CubeFace*)_b;
-            if (a->z < b->z)
-            {
-               return 1;
-            }
-            return -1;
+      qsort(faces, cubeFaceCount, sizeof(CubeFace), [](void const* _a, void const* _b) {
+         CubeFace* a = (CubeFace*)_a;
+         CubeFace* b = (CubeFace*)_b;
+         if (a->z < b->z)
+         {
+            return 1;
+         }
+         return -1;
          });
       // draw face with lighter color
       for (int iFace = 0; iFace < cubeFaceCount; iFace++)
@@ -2276,7 +2317,7 @@ namespace ImGuizmo
       vec_t frustum[6];
       ComputeFrustumPlanes(frustum, viewProjection.m16);
       matrix_t res = *(matrix_t*)matrix * viewProjection;
-         
+
       for (float f = -gridSize; f <= gridSize; f += 1.f)
       {
          for (int dir = 0; dir < 2; dir++)
@@ -2336,6 +2377,10 @@ namespace ImGuizmo
       static int interpolationFrames = 0;
       const vec_t referenceUp = makeVect(0.f, 1.f, 0.f);
 
+      matrix_t svgView, svgProjection;
+      svgView = gContext.mViewMat;
+      svgProjection = gContext.mProjectionMat;
+
       ImGuiIO& io = ImGui::GetIO();
       gContext.mDrawList->AddRectFilled(position, position + size, backgroundColor);
       matrix_t viewInverse;
@@ -2384,6 +2429,10 @@ namespace ImGuizmo
             const vec_t indexVectorX = directionUnary[perpXIndex] * invert;
             const vec_t indexVectorY = directionUnary[perpYIndex] * invert;
             const vec_t boxOrigin = directionUnary[normalIndex] * -invert - indexVectorX - indexVectorY;
+            const vec_t faceCoords[4] = { directionUnary[normalIndex] + directionUnary[perpXIndex] + directionUnary[perpYIndex],
+                                          directionUnary[normalIndex] + directionUnary[perpXIndex] - directionUnary[perpYIndex],
+                                          directionUnary[normalIndex] - directionUnary[perpXIndex] - directionUnary[perpYIndex],
+                                          directionUnary[normalIndex] - directionUnary[perpXIndex] + directionUnary[perpYIndex] };
 
             // plan local space
             const vec_t n = directionUnary[normalIndex] * invert;
@@ -2429,7 +2478,7 @@ namespace ImGuizmo
                }
 
                const ImVec2 panelCorners[2] = { panelPosition[iPanel], panelPosition[iPanel] + panelSize[iPanel] };
-               bool insidePanel = localx > panelCorners[0].x&& localx < panelCorners[1].x && localy > panelCorners[0].y&& localy < panelCorners[1].y;
+               bool insidePanel = localx > panelCorners[0].x && localx < panelCorners[1].x&& localy > panelCorners[0].y && localy < panelCorners[1].y;
                int boxCoordInt = int(boxCoord.x * 9.f + boxCoord.y * 3.f + boxCoord.z);
                assert(boxCoordInt < 27);
                boxes[boxCoordInt] |= insidePanel && (!isDraging);
@@ -2536,6 +2585,9 @@ namespace ImGuizmo
          vec_t newEye = camTarget + newDir * length;
          LookAt(&newEye.x, &camTarget.x, &referenceUp.x, view);
       }
+
+      // restore view/projection because it was used to compute ray
+      ComputeContext(svgView.m16, svgProjection.m16, gContext.mModelSource.m16, gContext.mMode);
    }
 };
 
